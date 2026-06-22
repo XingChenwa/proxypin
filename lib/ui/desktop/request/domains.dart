@@ -221,6 +221,7 @@ class DomainWidgetState extends State<DomainList> with AutomaticKeepAliveClientM
         trailing: appIcon(request),
         onDelete: deleteHost,
         onExportHar: exportDomainHar,
+        onExportUrls: exportDomainUrls,
         onRequestRemove: (req) {
           widget.onRemove?.call([req]);
           changeState();
@@ -328,7 +329,37 @@ class DomainWidgetState extends State<DomainList> with AutomaticKeepAliveClientM
     }
   }
 
+  Future<void> exportDomainUrls(String domain) async {
+    var urls = containerMap[domain]?.body.map((it) => it.request.requestUrl).toList() ?? [];
+    if (urls.isEmpty) {
+      if (mounted) FlutterToastr.show(localizations.emptyData, context);
+      return;
+    }
+
+    var fileName = _domainUrlsFileName(domain);
+    var path = await FilePicker.saveFile(fileName: fileName);
+    if (path == null) {
+      return;
+    }
+
+    try {
+      var file = await File(path).create(recursive: true);
+      await file.writeAsString(urls.join('\r\n'));
+      if (mounted) FlutterToastr.show(localizations.exportSuccess, context);
+    } catch (e) {
+      if (mounted) FlutterToastr.show('${localizations.exportFailed} $e', context);
+    }
+  }
+
   String _domainHarFileName(String domain) {
+    return _domainFileName(domain, 'har');
+  }
+
+  String _domainUrlsFileName(String domain) {
+    return _domainFileName(domain, 'txt');
+  }
+
+  String _domainFileName(String domain, String extension) {
     var uri = Uri.tryParse(domain);
     var host = (uri?.host.isNotEmpty == true) ? uri!.host : domain;
     var suffix = uri?.hasPort == true ? '_${uri!.port}' : '';
@@ -336,8 +367,9 @@ class DomainWidgetState extends State<DomainList> with AutomaticKeepAliveClientM
     if (safeDomain.isEmpty) {
       safeDomain = 'domain';
     }
-    return 'ProxyPin_${safeDomain}_${DateTime.now().dateFormat()}.har';
+    return 'ProxyPin_${safeDomain}_${DateTime.now().dateFormat()}.$extension';
   }
+
 
   ///排序
   void sort(bool desc) {
@@ -400,6 +432,7 @@ class DomainRequests extends StatefulWidget {
   //移除回调
   final Function(String host)? onDelete;
   final Function(String host)? onExportHar;
+  final Function(String host)? onExportUrls;
   final Function(HttpRequest request)? onRequestRemove;
   final RequestSelectionHandlers selectionHandlers;
   final MultiSelectController selectionController;
@@ -408,6 +441,7 @@ class DomainRequests extends StatefulWidget {
       {this.selected = false,
       this.onDelete,
       this.onExportHar,
+      this.onExportUrls,
       required this.proxyServer,
       this.onRequestRemove,
       required this.selectionHandlers,
@@ -474,6 +508,7 @@ class DomainRequests extends StatefulWidget {
         selected: selected ?? state.currentState?.selected == true,
         onDelete: onDelete,
         onExportHar: onExportHar,
+        onExportUrls: onExportUrls,
         onRequestRemove: onRequestRemove,
         selectionController: selectionController,
         selectionHandlers: selectionHandlers,
@@ -588,6 +623,7 @@ class _DomainRequestsState extends State<DomainRequests> {
       ),
       MenuItem.separator(),
       MenuItem(label: localizations.exportDomainHar, onClick: (_) => exportDomainHar()),
+      MenuItem(label: '${localizations.export} URL', onClick: (_) => exportDomainUrls()),
       MenuItem.separator(),
       MenuItem(label: localizations.repeatDomainRequests, onClick: (_) => repeatDomainRequests()),
       MenuItem.separator(),
@@ -614,6 +650,10 @@ class _DomainRequestsState extends State<DomainRequests> {
 
   void exportDomainHar() {
     widget.onExportHar?.call(widget.domain);
+  }
+
+  void exportDomainUrls() {
+    widget.onExportUrls?.call(widget.domain);
   }
 
   Menu hostFilterMenu() {
